@@ -5,7 +5,9 @@
 .idea
 app/__pycache__/
 logs
+results
 output
 venv
 *.DS_Store
 .devcontainer
+*-bak

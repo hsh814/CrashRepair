@@ -36,7 +36,7 @@ export -f run_scenario
 
 NUM_WORKERS="$2"
 
-rm ${RUNS_FILE}
+rm -f ${RUNS_FILE}
 
 echo "executing experiments across ${NUM_WORKERS} workers"
 while read p; do
@@ -47,5 +47,5 @@ while read p; do
 done < "${EXPERIMENTS_FILE}"
 
 
-parallel --keep-order --eta --halt now,fail=1 -j ${NUM_WORKERS} run_scenario {}  < "${RUNS_FILE}"
+parallel --keep-order --eta --halt never -j ${NUM_WORKERS} run_scenario {}  < "${RUNS_FILE}"
 echo "finished running experiments"
