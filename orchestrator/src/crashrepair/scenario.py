@@ -125,6 +125,7 @@ class Scenario:
     ubsan_options: t.Optional[str] = attrs.field(default=None)
     use_ghost_functions: bool = attrs.field(default=False)
     acceptable_patch_limit: t.Optional[int] = attrs.field(default=None)
+    exp_id: t.Optional[str] = attrs.field(default=None)
 
     @property
     def compile_commands_path(self) -> str:
@@ -192,10 +193,15 @@ class Scenario:
         ubsan_options: t.Optional[str] = None,
         asan_options: t.Optional[str] = None,
         use_ghost_functions: bool = False,
+        subject_dir: t.Optional[str] = None,
+        exp_id: t.Optional[str] = None,
     ) -> Scenario:
-        directory = os.path.dirname(filename)
-        directory = os.path.abspath(directory)
-
+        exp_id = exp_id
+        if not subject_dir:
+            directory = os.path.dirname(filename)
+            directory = os.path.abspath(directory)
+        else:
+            directory = os.path.abspath(subject_dir)
         if not os.path.isabs(build_directory):
             build_directory = os.path.join(directory, build_directory)
 
@@ -259,6 +265,8 @@ class Scenario:
         *,
         skip_fuzzing: bool = False,
         fuzz_seed: int = 0,
+        subject_dir: t.Optional[str] = None,
+        exp_id: t.Optional[str] = None,
     ) -> Scenario:
         if not os.path.exists(filename):
             raise ValueError(f"bug file not found: {filename}")
@@ -299,6 +307,8 @@ class Scenario:
 
         if "fuzzer" in bug_dict and not skip_fuzzing:
             fuzzer_config = FuzzerConfig.from_dict(bug_dict["fuzzer"])
+            fuzzer_config.subject_dir = subject_dir
+            fuzzer_config.exp_id = exp_id
 
         return Scenario.build(
             filename=filename,
@@ -323,6 +333,8 @@ class Scenario:
             ubsan_options=ubsan_options,
             asan_options=asan_options,
             use_ghost_functions=use_ghost_functions,
+            subject_dir=subject_dir,
+            exp_id=exp_id,
         )
 
     @classmethod

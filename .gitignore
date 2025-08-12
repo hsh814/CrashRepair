@@ -11,3 +11,6 @@ venv
 *.DS_Store
 .devcontainer
 *-bak
+thirdparty
+__pycache__/
+*.pyc

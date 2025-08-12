@@ -1,7 +1,9 @@
 #!/bin/bash
 set -eu
 
-export PYTHONPATH="/opt/fuzzer/pypackages/lib/python2.7/site-packages:/opt/fuzzer/pypackages"
-export PATH="/opt/fuzzer/deps/cmake/bin:/opt/fuzzer/deps/dynamorio/build/bin64:/opt/fuzzer/deps/valgrind/coregrind:${PATH}"
+ROOT_DIR="$(realpath $(dirname ${BASH_SOURCE[0]:-$0})/..)"
 
-python /opt/fuzzer/code/fuzz.py $@
+export PYTHONPATH="${ROOT_DIR}/thirdparty/pypackages/lib/python2.7/site-packages:${ROOT_DIR}/thirdparty/pypackages"
+export PATH="${ROOT_DIR}/thirdparty/deps/dynamorio/build/bin64:${ROOT_DIR}/thirdparty/deps/valgrind/coregrind:${PATH}"
+
+python ${ROOT_DIR}/fuzzer/fuzz.py $@

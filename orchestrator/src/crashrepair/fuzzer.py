@@ -17,7 +17,9 @@ from .test import Test
 if t.TYPE_CHECKING:
     from .scenario import Scenario
 
-FUZZER_PATH = "/opt/fuzzer/code/fuzz"
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
+FUZZER_PATH = os.path.join(ROOT_DIR, "fuzzer", "fuzz")
 
 _FUZZER_CONFIG_TEMPLATE = """
 [{scenario_name}]
@@ -35,6 +37,8 @@ crash_cmd={crash_cmd}
 poc={poc}
 poc_fmt={poc_fmt}
 process_max_number={num_workers}
+subject_dir={subject_dir}
+exp_id={exp_id}
 """
 
 
@@ -52,6 +56,8 @@ class FuzzerConfig:
     timeout_global: int = attrs.field(default=300)
     timeout_local: int = attrs.field(default=300)
     num_workers: int = attrs.field(default=8)
+    subject_dir: t.Optional[str] = attrs.field(default=None)
+    exp_id: t.Optional[str] = attrs.field(default=None)
 
     @classmethod
     def from_dict(cls, dict_: t.Dict[str, t.Any]) -> FuzzerConfig:
@@ -90,18 +96,30 @@ class Fuzzer:
     @property
     def tests_directory(self) -> str:
         """Returns the absolute path of the generated tests directory."""
-        return os.path.join(self.scenario.directory, "concentrated_inputs")
+        return os.path.join(self.scenario.directory, "concfuzz-runtime", "out", self.config.exp_id)
+
+    def _get_path(self, path: str, runtime: bool = True) -> str:
+        if runtime:
+            path = os.path.basename(path)
+            return os.path.join(self.scenario.directory, "concfuzz-runtime", path)
+        return os.path.join(self.scenario.directory, path)
 
     def _generate_config_file_contents(self) -> str:
         config = self.config
-        poc = ";".join(str(v) for v in config.poc_values)
+        poc_files = os.listdir(self._get_path("in"))
+        poc_values = list()
+        for poc_file in poc_files:
+            poc_values.append(os.path.join(self._get_path("in"), poc_file))
+        poc = ";".join(str(v) for v in poc_values)
         poc_fmt = ";".join(config.poc_format)
+        config.trace_command_template[0] = self._get_path(config.trace_command_template[0])
+        config.crash_command_template[0] = self._get_path(config.crash_command_template[0])
         trace_command = ";".join(config.trace_command_template)
         crash_command = ";".join(config.crash_command_template)
         store_all_inputs = "True" if config.store_all_inputs else "False"
         return _FUZZER_CONFIG_TEMPLATE.format(
             store_all_inputs=store_all_inputs,
-            binary_path=self.scenario.binary_path,
+            binary_path=self._get_path(self.scenario.binary_path),
             crash_cmd=crash_command,
             crash_tag=config.crash_tag,
             directory=self.scenario.directory,
@@ -115,6 +133,8 @@ class Fuzzer:
             poc_fmt=poc_fmt,
             scenario_name=self.scenario.tag_id,
             trace_cmd=trace_command,
+            subject_dir=config.subject_dir,
+            exp_id=config.exp_id
         )
 
     @contextlib.contextmanager
@@ -239,7 +259,9 @@ class Fuzzer:
             return []
 
         # the fuzzer requires that the output directory exists
-        os.makedirs(self.tests_directory, exist_ok=True)
+        # os.makedirs(self.tests_directory, exist_ok=True)
+        if os.path.exists(self.tests_directory):
+            shutil.rmtree(self.tests_directory, ignore_errors=True)
 
         env: t.Dict[str, str] = {}
         if "LD_LIBRARY_PATH_ORIG" in os.environ:
@@ -247,12 +269,12 @@ class Fuzzer:
 
         # only bother rebuilding if we have additional sanitizer flags
         # if self.scenario.sanitizer_flags:
-        self.scenario.rebuild(use_sanitizers=True)
+        # self.scenario.rebuild(use_sanitizers=True)
 
         # are there any generated tests?
-        if os.listdir(self.tests_directory):
-            logger.info(f"skipping fuzzing: outputs already exist [{self.tests_directory}]")
-            return self._load_tests()
+        # if os.listdir(self.tests_directory):
+        #     logger.info(f"skipping fuzzing: outputs already exist [{self.tests_directory}]")
+        #     return self._load_tests()
 
         # invoke the fuzzer
         with self._generate_config_file() as config_filename:
@@ -285,13 +307,13 @@ class Fuzzer:
         all_inputs_directory = os.path.join(fuzzer_directory, "all_inputs")
         concentrated_inputs_directory = os.path.join(fuzzer_directory, "concentrated_inputs")
 
-        if self.config.store_all_inputs:
-            shutil.copytree(all_inputs_directory, self.tests_directory, dirs_exist_ok=True)
-        else:
-            shutil.copytree(concentrated_inputs_directory, self.tests_directory, dirs_exist_ok=True)
+        # if self.config.store_all_inputs:
+        #     shutil.copytree(all_inputs_directory, self.tests_directory, dirs_exist_ok=True)
+        # else:
+        #     shutil.copytree(concentrated_inputs_directory, self.tests_directory, dirs_exist_ok=True)
 
         # how many tests did we generate?
-        num_generated_tests = len(os.listdir(self.tests_directory))
+        num_generated_tests = len(os.listdir(os.path.join(self.tests_directory, "concentrated_inputs")))
         logger.info(f"fuzzer generated: {num_generated_tests} tests")
 
         return self._load_tests()

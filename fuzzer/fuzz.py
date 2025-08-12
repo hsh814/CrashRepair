@@ -182,14 +182,18 @@ def parse_args():
 		detailed_config['crash_replace_idx'].append(2 * id + 1)
 	detailed_config['crash_cmd'] = detailed_config['crash_cmd'][:-1]
 	detailed_config['crash_replace_idx'] = detailed_config['crash_replace_idx'][:-1]
+	detailed_config['subject_dir'] = os.path.abspath(detailed_config['subject_dir'][0])
+	detailed_config['exp_id'] = detailed_config['exp_id'][0]
 	# detailed_config['trace_replace_idx'] = np.where(np.asarray(detailed_config['trace_cmd']) == '***')[0]
 	# detailed_config['crash_replace_idx'] = np.where(np.asarray(detailed_config['crash_cmd']) == '***')[0]
 	return args.tag, detailed_config, args.verbose
 
-def init_log(tag, verbose, folder):
+def init_log(tag, verbose, folder, exp_id):
 	global OutFolder, TmpFolder, TraceFolder, ConcentratedInputFolder, AllInputFolder
 	#OutFolder = os.path.join(folder, 'output_%d' % int(time()))
-	OutFolder = os.path.join(folder, 'fuzzer') # (YN: adapted ouput folder)
+	OutFolder = os.path.join(folder, 'concfuzz-runtime', 'out', exp_id) # (YN: adapted ouput folder)
+	if os.path.exists(OutFolder):
+		shutil.rmtree(OutFolder, ignore_errors=True)
 	if os.path.exists(OutFolder):
 		raise Exception("ERROR: Output folder already exists! -> %s" % OutFolder)
 	else:
@@ -650,5 +654,5 @@ def concentrate_fuzz(config_info):
 
 if __name__ == '__main__':
 	tag, config_info, verbose = parse_args()
-	init_log(tag, verbose, config_info['folder'])
+	init_log(tag, verbose, config_info['folder'], config_info['exp_id'])
 	concentrate_fuzz(config_info)

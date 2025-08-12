@@ -44,7 +44,7 @@ def do_analyze(args: argparse.Namespace) -> None:
 
 
 def do_fuzz(args: argparse.Namespace) -> None:
-    scenario = Scenario.for_file(args.filename)
+    scenario = Scenario.for_file(args.filename, subject_dir=args.subject_dir, exp_id=args.exp_id)
     scenario.fuzz()
 
 
@@ -153,6 +153,14 @@ def parse_args() -> argparse.Namespace:
     parser_fuzz.add_argument(
         "filename",
         help="the path to the bug.json file for the bug scenario",
+    )
+    parser_fuzz.add_argument(
+        "--subject-dir",
+        help="the directory where the subject program is located",
+    )
+    parser_fuzz.add_argument(
+        "--exp-id",
+        help="the experiment ID to use for the fuzzing run",
     )
     parser_fuzz.set_defaults(func=do_fuzz)
 
