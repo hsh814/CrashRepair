@@ -377,14 +377,9 @@ def gen_report(input_no, raw_args, poc_fmt, trace_cmd, trace_replace_idx, crash_
 			"META_CRASH_LOC_FILE": meta_filename,
 		}
 		_, err = tracer.exe_bin(crash_cmd_pac, env_vars=custom_env)
-		if os.path.exists(pac_filename):
-			os.remove(pac_filename)
-		if os.path.exists(meta_filename):
-			os.remove(meta_filename)
 		time_ms = int((time() - StartTime) * 1000)
-		_, err = tracer.exe_bin(crash_cmd, env_vars=custom_env)
 		pac_content = utils.read_txt_str(pac_filename)
-		if pac_content is not None:
+		if pac_content:
 			pac_tokens = [replace_pointer(token) for token in pac_content.split()]
 			pac_hash = calc_trace_hash(" ".join(pac_tokens))
 		else:
@@ -393,9 +388,17 @@ def gen_report(input_no, raw_args, poc_fmt, trace_cmd, trace_replace_idx, crash_
 		exact_crash = True
 		if meta_content is None or len(meta_content) == 0 or meta_content[0] == '0':
 			exact_crash = False
-
+		logging.debug("Input #{} PAC hash: {}, exact crash: {}".format(input_no, pac_hash, exact_crash))
+		if os.path.exists(pac_filename):
+			os.remove(pac_filename)
+		if os.path.exists(meta_filename):
+			os.remove(meta_filename)
 		return [input_no, trace, trace_hash, crash_result, trace_diff_id, pac_hash, exact_crash, time_ms]
 	except:
+		if os.path.exists(pac_filename):
+			os.remove(pac_filename)
+		if os.path.exists(meta_filename):
+			os.remove(meta_filename)
 		print("report generation error: {}".format(traceback.format_exc()))
 		return []
 
