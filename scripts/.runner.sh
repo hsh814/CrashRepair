@@ -38,6 +38,8 @@ if [[ -d patches ]]; then
 fi
 cp -r analysis "${RESULTS_DIR}"
 cp report.json "${RESULTS_DIR}"
+cp -r plausible_patches "${RESULTS_DIR}"
+cp -r concentrated_inputs "${RESULTS_DIR}"
 
 # fix permissions
 chown -R ${HOST_UID}:${HOST_UID} "${LOG_DIR}"

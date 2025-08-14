@@ -54,7 +54,7 @@ RUN eval "$(pyenv init --path)" \
  && pipenv install --dev \
  && pipenv install -e . \
  && pipenv run mypy src \
- && pipenv run flake8 src \
+ && pipenv run flake8 --jobs=2 src \
  && pipenv run pyinstaller --onefile shim.py \
  && mkdir -p /opt/crashrepair/bin \
  && cp ./dist/shim /opt/crashrepair/bin \

@@ -142,6 +142,10 @@ class Scenario:
     def patches_directory(self) -> str:
         return os.path.join(self.directory, "patches")
 
+    @property
+    def plausible_patches_directory(self) -> str:
+        return os.path.join(self.directory, "plausible_patches")
+
     # TODO rename config.ini to fuzzer.ini to make its purpose clear
     @property
     def fuzzer_config_path(self) -> str:
@@ -482,6 +486,9 @@ class Scenario:
         if should_rebuild:
             self.rebuild(record_compile_commands=False)
 
+        if not os.path.exists(self.plausible_patches_directory):
+            os.makedirs(self.plausible_patches_directory, exist_ok=True)
+
         for candidate in candidates:
             if time_limit_seconds and timer.duration >= time_limit_seconds:
                 logger.info("reached candidate patch evaluation time limit")
@@ -531,6 +538,7 @@ class Scenario:
             tests_passed: t.List[Test] = []
             tests_failed: t.List[Test] = []
             test_outcomes: t.List[TestOutcome] = []
+            test_exploit = True
             for test in all_tests:
                 logger.debug(f"testing candidate #{candidate.id_} against test #{test.name}...")
                 outcome = test.run(self.time_limit_seconds_single_test, halt_on_error=self.halt_on_error)
@@ -538,6 +546,11 @@ class Scenario:
                 if outcome:
                     logger.info(f"candidate #{candidate.id_} passes test #{test.name}")
                     tests_passed.append(test)
+                    if test_exploit:
+                        # Save the patch as a plausible
+                        logger.info(f"PLAUSIBLE: candidate #{candidate.id_} passes the exploit test")
+                        filename = os.path.join(self.plausible_patches_directory, f"{candidate.id_}.diff")
+                        candidate.write(filename)
                 else:
                     logger.info(f"candidate #{candidate.id_} fails test #{test.name}")
                     tests_failed.append(test)
@@ -549,6 +562,7 @@ class Scenario:
                         tests_passed=tests_passed,
                         tests_failed=tests_failed,
                     )
+                test_exploit = False
 
             timer_tests.stop()
             logger.info(f"repair found! candidate #{candidate.id_} passes all tests")
