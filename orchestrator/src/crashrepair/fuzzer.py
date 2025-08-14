@@ -25,13 +25,10 @@ _FUZZER_CONFIG_TEMPLATE = """
 [{scenario_name}]
 bin_path={binary_path}
 folder={directory}
-global_timeout={global_timeout}
-local_timeout={local_timeout}
 mutate_range={mutate_range}
 crash_tag={crash_tag}
 store_all_inputs={store_all_inputs}
 rand_seed={fuzz_seed}
-combination_num={max_combinations}
 trace_cmd={trace_cmd}
 crash_cmd={crash_cmd}
 poc={poc}
@@ -40,6 +37,9 @@ process_max_number={num_workers}
 subject_dir={subject_dir}
 exp_id={exp_id}
 """
+# global_timeout={global_timeout}
+# local_timeout={local_timeout}
+# combination_num={max_combinations}
 
 
 @attrs.define(auto_attribs=True, slots=True)
@@ -117,6 +117,9 @@ class Fuzzer:
         trace_command = ";".join(config.trace_command_template)
         crash_command = ";".join(config.crash_command_template)
         store_all_inputs = "True" if config.store_all_inputs else "False"
+        # max_combinations=config.max_combinations,
+        # global_timeout=config.timeout_global,
+        # local_timeout=config.timeout_local,
         return _FUZZER_CONFIG_TEMPLATE.format(
             store_all_inputs=store_all_inputs,
             binary_path=self._get_path(self.scenario.binary_path),
@@ -124,9 +127,6 @@ class Fuzzer:
             crash_tag=config.crash_tag,
             directory=self.scenario.directory,
             fuzz_seed=config.seed,
-            global_timeout=config.timeout_global,
-            local_timeout=config.timeout_local,
-            max_combinations=config.max_combinations,
             mutate_range=config.mutate_range,
             num_workers=config.num_workers,
             poc=poc,
@@ -287,7 +287,7 @@ class Fuzzer:
             ))
             outcome = self.scenario.shell(
                 command,
-                cwd=self.scenario.directory,
+                cwd=os.path.join(self.scenario.directory, "concfuzz-runtime"),
                 env=env,
                 check_returncode=False,
                 # capture_output=True,

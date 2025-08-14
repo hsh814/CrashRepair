@@ -24,13 +24,14 @@ TmpFolder = ''
 TraceFolder = ''
 ConcentratedInputFolder = '' # (YN: added folder for concentrated generated inputs)
 AllInputFolder = '' # (YN: added folder for all generated inputs)
+PacInputFolder = ''
 
 SeedPool = [] # Each element is in the fmt of [<process_tag>, <seed_content>]. <process_tag>: True (selected) / False (not selected)
 SeedTraceHashList = []
 ReportCollection = [] # Each element if in the fmt of [<trace_hash>, <tag>]. <tag>: m - malicious / b - benign
 TraceHashCollection = []
-GlobalTimeout = 5 * 60 # 5 min
-LocalTimeout = 5 * 60 # 5 min
+GlobalTimeout = 12 * 3600 # 12 hours
+LocalTimeout = 12 * 3600 # 12 hours
 DefaultRandSeed = 3
 DefaultMutateNum = 200
 DefaultMaxCombination = 2
@@ -39,6 +40,9 @@ ConcentratedInputCounter = 0 # (YN: added input counter)
 inputFormat = 'bfile' # or 'text' (YN: added to determine input format)
 AllInputCounter = 0 # (YN: added input counter)
 StoreAllInputs = False # (YN: added flag for generating all inputs)
+PacHashCollection = set()
+StartTime = time()
+PacInputCounter = 0
 
 def parse_args():
 	parser = argparse.ArgumentParser(description="ConcFuzz")
@@ -189,7 +193,7 @@ def parse_args():
 	return args.tag, detailed_config, args.verbose
 
 def init_log(tag, verbose, folder, exp_id):
-	global OutFolder, TmpFolder, TraceFolder, ConcentratedInputFolder, AllInputFolder
+	global OutFolder, TmpFolder, TraceFolder, ConcentratedInputFolder, AllInputFolder, PacInputFolder
 	#OutFolder = os.path.join(folder, 'output_%d' % int(time()))
 	OutFolder = os.path.join(folder, 'concfuzz-runtime', 'out', exp_id) # (YN: adapted ouput folder)
 	if os.path.exists(OutFolder):
@@ -197,7 +201,7 @@ def init_log(tag, verbose, folder, exp_id):
 	if os.path.exists(OutFolder):
 		raise Exception("ERROR: Output folder already exists! -> %s" % OutFolder)
 	else:
-		os.mkdir(OutFolder)
+		os.makedirs(OutFolder)
 	# (YN: added folders for generated inputs)
 	ConcentratedInputFolder = os.path.join(OutFolder, 'concentrated_inputs')
 	if not os.path.exists(ConcentratedInputFolder):
@@ -205,6 +209,10 @@ def init_log(tag, verbose, folder, exp_id):
 	AllInputFolder = os.path.join(OutFolder, 'all_inputs')
 	if not os.path.exists(AllInputFolder):
 		os.mkdir(AllInputFolder)
+  
+	PacInputFolder = os.path.join(OutFolder, 'unique-states')
+	if not os.path.exists(PacInputFolder):
+		os.mkdir(PacInputFolder)
 
 	TmpFolder = os.path.join(OutFolder, 'tmp')
 	if not os.path.exists(TmpFolder):
@@ -227,6 +235,7 @@ def init_log(tag, verbose, folder, exp_id):
 	logging.info('Output Folder: %s' % OutFolder)
 	logging.debug("CVE: %s" % tag)
 	logging.debug("Config Info: \n%s" % '\n'.join(['\t%s : %s' % (key, config_info[key]) for key in config_info]))
+	os.environ["META_PATCH_ID"] = "0"
 
 def choose_seed():
 	global SeedPool
@@ -337,6 +346,11 @@ def trace_cmp(seed_trace, trace):
 			return id
 	return min_len
 
+def replace_pointer(token):
+	if token.startswith('0x'):
+		return "0" if int(token, 16) == 0 else "1"
+	return token
+
 def gen_report(input_no, raw_args, poc_fmt, trace_cmd, trace_replace_idx, crash_cmd, crash_replace_idx, crash_info, seed_trace):
 	try:
 		if time() >= utils.GlobalEndTime:
@@ -353,7 +367,34 @@ def gen_report(input_no, raw_args, poc_fmt, trace_cmd, trace_replace_idx, crash_
 		_, err = tracer.exe_bin(crash_cmd)
 		logging.debug("executed input #{}".format(input_no))
 		crash_result = check_exploit(err, crash_info)
-		return [input_no, trace, trace_hash, crash_result, trace_diff_id]
+		# Run the PAC tracer - get state information
+		bin = crash_cmd[0].replace("/concfuzz-runtime/", "/concfuzz-state-runtime/")
+		crash_cmd_pac = [bin] + crash_cmd[1:]
+		pac_filename = os.path.join(TmpFolder, "pac_reached_{}.txt".format(input_no))
+		meta_filename = os.path.join(TmpFolder, "meta_crash_{}.txt".format(input_no))
+		custom_env = {
+			"PAC_REACHED_FILE_NAME": pac_filename,
+			"META_CRASH_LOC_FILE": meta_filename,
+		}
+		_, err = tracer.exe_bin(crash_cmd_pac, env_vars=custom_env)
+		if os.path.exists(pac_filename):
+			os.remove(pac_filename)
+		if os.path.exists(meta_filename):
+			os.remove(meta_filename)
+		time_ms = int((time() - StartTime) * 1000)
+		_, err = tracer.exe_bin(crash_cmd, env_vars=custom_env)
+		pac_content = utils.read_txt_str(pac_filename)
+		if pac_content is not None:
+			pac_tokens = [replace_pointer(token) for token in pac_content.split()]
+			pac_hash = calc_trace_hash(" ".join(pac_tokens))
+		else:
+			pac_hash = None
+		meta_content = utils.read_txt_str(meta_filename)
+		exact_crash = True
+		if meta_content is None or len(meta_content) == 0 or meta_content[0] == '0':
+			exact_crash = False
+
+		return [input_no, trace, trace_hash, crash_result, trace_diff_id, pac_hash, exact_crash, time_ms]
 	except:
 		print("report generation error: {}".format(traceback.format_exc()))
 		return []
@@ -455,8 +496,10 @@ def mutate_inputs(seed, poc_fmt, mutation_num, mutate_idx):
 	return inputs
 
 # (YN: added function to store generated inputs)
-def store_input(output_folder, input_counter, config_info, content):
+def store_input(output_folder, input_counter, config_info, content, time_ms=0):
 	input_filepath = os.path.join(output_folder, "input_" + str(input_counter))
+	if output_folder.endswith("/unique-states"):
+		input_filepath = os.path.join(output_folder, "input_" + str(input_counter) + "_" + str(time_ms))
 	logging.info("write input: " + str(input_filepath))
 	if config_info['input_format'] == 'bfile':
 		utils.write_bin(input_filepath, content)
@@ -466,7 +509,7 @@ def store_input(output_folder, input_counter, config_info, content):
 	return input_counter
 
 def concentrate_fuzz(config_info):
-	global TraceHashCollection, ReportCollection, SeedPool, SeedTraceHashList, TraceFolder, TmpFolder, ConcentratedInputCounter, AllInputCounter, StoreAllInputs, ProcessNum
+	global TraceHashCollection, ReportCollection, SeedPool, SeedTraceHashList, TraceFolder, TmpFolder, ConcentratedInputCounter, AllInputCounter, StoreAllInputs, ProcessNum, PacHashCollection, PacInputFolder, PacInputCounter
 
 	# (YN: added some info output)
 	logging.info('Input format: %s' % config_info['input_format'])
@@ -482,7 +525,7 @@ def concentrate_fuzz(config_info):
 	'''Process the PoC'''
 	# generate the trace for the poc
 	trace, trace_hash = just_trace(0, config_info['poc'], config_info['poc_fmt'], config_info['trace_cmd'], config_info['trace_replace_idx'])
-	logging.debug('PoC Hash: %s' % trace_hash)
+	logging.debug('PoC Hash: %s, len(trace): %d' % (trace_hash, len(trace)))
 	seed_len = len(config_info['poc'])
 	# save the trace
 	TraceHashCollection.append(trace_hash)
@@ -542,7 +585,7 @@ def concentrate_fuzz(config_info):
 			# pool = Pool(ProcessNum)
 			executor = ProcessPoolExecutor(max_workers=ProcessNum)
 			logging.info("input_num: %s" % str(input_num))
- 			logging.info("ProcessNum: %s" % str(ProcessNum))
+			logging.info("ProcessNum: %s" % str(ProcessNum))
 			
 			workers = []
 			for input_no in range(input_num):
@@ -604,29 +647,37 @@ def concentrate_fuzz(config_info):
 			if hit_timeout: # only store the inputs if we hit the timeout
 				for item in result_collection:
 					if len(item) > 0:
-						if item[2] not in TraceHashCollection:
-							ConcentratedInputCounter = store_input(ConcentratedInputFolder, ConcentratedInputCounter, config_info, inputs[item[0]])
+						input_no, trace, trace_hash, crash_result, trace_diff_id, pac_hash, exact_crash, time_ms = item
+						if trace_hash not in TraceHashCollection:
+							ConcentratedInputCounter = store_input(ConcentratedInputFolder, ConcentratedInputCounter, config_info, inputs[input_no], time_ms)
+						if pac_hash is not None and pac_hash not in PacHashCollection:
+							PacHashCollection.add(pac_hash)
+							store_input(PacInputFolder, PacInputCounter, config_info, inputs[input_no], time_ms)
 				break
 			else:
 				for item in result_collection:
 					if len(item) > 0:
-						diff_collection.add(item[4])
-						crash_collection.add(item[3])
+						input_no, trace, trace_hash, crash_result, trace_diff_id, pac_hash, exact_crash, time_ms = item
+						diff_collection.add(trace_diff_id)
+						crash_collection.add(crash_result)
 						# save the trace
-						if item[2] not in TraceHashCollection:
-							TraceHashCollection.append(item[2])
-							trace_path = os.path.join(TraceFolder, item[2])
+						if trace_hash not in TraceHashCollection:
+							TraceHashCollection.append(trace_hash)
+							trace_path = os.path.join(TraceFolder, trace_hash)
 							# utils.write_pkl(trace_path, item[1])
-							np.savez(trace_path, trace=item[1])
+							np.savez(trace_path, trace=trace)
 							# (YN: added to store "interesting" (concentrated) input files)
-							ConcentratedInputCounter = store_input(ConcentratedInputFolder, ConcentratedInputCounter, config_info, inputs[item[0]])
+							ConcentratedInputCounter = store_input(ConcentratedInputFolder, ConcentratedInputCounter, config_info, inputs[input_no], time_ms)
 						# check whether to add it into the seed pool
-						if item[3] == 'm' and item[2] not in SeedTraceHashList:
-							SeedPool.append([False, inputs[item[0]]])
-							SeedTraceHashList.append(item[2])
+						if crash_result == 'm' and trace_hash not in SeedTraceHashList:
+							SeedPool.append([False, inputs[input_no]])
+							SeedTraceHashList.append(trace_hash)
 						# Update reports
-						if [item[2], item[3]] not in ReportCollection:
-							ReportCollection.append([item[2], item[3]])
+						if [trace_hash, crash_result] not in ReportCollection:
+							ReportCollection.append([trace_hash, crash_result])
+						if pac_hash is not None and pac_hash not in PacHashCollection:
+							PacHashCollection.add(pac_hash)
+							store_input(PacInputFolder, PacInputCounter, config_info, inputs[input_no], time_ms)
 
 				logging.debug("#Diff: %d; #ExeResult: %d; #seed: %d" % (len(diff_collection), len(crash_collection), len(SeedPool)))
 				# update sensitivity map
@@ -643,7 +694,9 @@ def concentrate_fuzz(config_info):
 				if len(unexplore_loc_idx_list) == 0:
 					logging.debug("[R-%d-%d] Finish exploring all the locs!" % (round_no, subround_no))
 					break
-
+				if PacInputCounter >= 461:
+					logging.warn("Reached maximum number of unique states, stopping further input generation.")
+					break
 		ctime = time()
 		duration = ctime - stime
 		if ctime >= utils.GlobalEndTime:

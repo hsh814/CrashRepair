@@ -22,7 +22,7 @@ def ifTracer(cmd_list):
 	# craft tracing command
 	tracer_cmd_list = [env.dynamorio_path, '-c', env.iftracer_path, '--'] + cmd_list + ['2>&1', '>', trace_filename]
 	tracer_cmd = " ".join(tracer_cmd_list)
-	# logging.info("Trace command: %s" % tracer_cmd)
+	logging.debug("Trace command: %s" % tracer_cmd)
 
 	p1 = subprocess.Popen(tracer_cmd, shell=True, stdout=DEVNULL, stderr=DEVNULL)
 
@@ -63,14 +63,19 @@ def ifTracer(cmd_list):
 	return if_list
 
 
-def exe_bin(cmd_list):
+def exe_bin(cmd_list, env_vars=None):
 	global SubProcessTimeout
 
 	if time.time() >= utils.GlobalEndTime:
 		return bytes(0), bytes(0)
 
-	logging.info("Input command: %s" % ' '.join(cmd_list))
-	p1 = subprocess.Popen(cmd_list, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+	exec_env = os.environ.copy()
+	env_str = ""
+	if env_vars:
+		exec_env.update(env_vars)
+		env_str = " ".join(["%s=%s" % (k, v) for k, v in env_vars.items()])
+	logging.info("Input command: %s %s" % (env_str, ' '.join(cmd_list)))
+	p1 = subprocess.Popen(cmd_list, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=exec_env)
 
 	# (YN: added timeout handling)
 	t_end = time.time() + utils.SubProcessTimeout

@@ -2,6 +2,7 @@ import pickle
 import string
 import numpy as np
 import multiprocessing
+import os
 
 # Used for generating the random filename
 FileNameChars = list(string.letters + string.digits)
@@ -36,6 +37,13 @@ def read_txt(path):
 def write_txt(path, content):
 	with open(path, 'w') as f:
 		f.writelines(content)
+
+def read_txt_str(path):
+	if not os.path.exists(path):
+		return None
+	with open(path, 'r') as f:
+		content = f.read()
+	return content
 
 '''
 Process the pickle file
