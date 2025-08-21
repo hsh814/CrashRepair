@@ -159,7 +159,7 @@ def parse_args():
 	if 'subprocess_timeout' in detailed_config:
 		detailed_config['subprocess_timeout'] = int(detailed_config['subprocess_timeout'][0])
 	else:
-		detailed_config['subprocess_timeout'] = 40 # default value 15 seconds
+		detailed_config['subprocess_timeout'] = 320 # default value 15 seconds
 	utils.SubProcessTimeout = detailed_config['subprocess_timeout']
 	# (YN: added optional parameter to set the maximum number of subprocesses)
 	if 'process_max_number' in detailed_config:
@@ -379,16 +379,19 @@ def gen_report(input_no, raw_args, poc_fmt, trace_cmd, trace_replace_idx, crash_
 		_, err = tracer.exe_bin(crash_cmd_pac, env_vars=custom_env)
 		time_ms = int((time() - StartTime) * 1000)
 		pac_content = utils.read_txt_str(pac_filename)
+		pac_len = 0
 		if pac_content:
 			pac_tokens = [replace_pointer(token) for token in pac_content.split()]
 			pac_hash = calc_trace_hash(" ".join(pac_tokens))
+			pac_len = len(pac_tokens)
+			logging.debug("Input #{} content: {}".format(input_no, pac_content))
 		else:
 			pac_hash = None
 		meta_content = utils.read_txt_str(meta_filename)
 		exact_crash = True
 		if meta_content is None or len(meta_content) == 0 or meta_content[0] == '0':
 			exact_crash = False
-		logging.debug("Input #{} PAC hash: {}, exact crash: {}".format(input_no, pac_hash, exact_crash))
+		logging.debug("Input #{} PAC hash: {}(len {}), exact crash: {}".format(input_no, pac_hash, pac_len, exact_crash))
 		if os.path.exists(pac_filename):
 			os.remove(pac_filename)
 		if os.path.exists(meta_filename):
