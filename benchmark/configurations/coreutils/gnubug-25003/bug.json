@@ -29,8 +29,8 @@
     "store-all-inputs": true,
     "mutate-range": "1~1000;1~1000",
     "timeout": {
-      "local": 300,
-      "global": 300
+      "local": 43200,
+      "global": 43200
     },
     "proof-of-crash": {
       "format": ["int", "int"],

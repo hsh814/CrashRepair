@@ -28,8 +28,8 @@
     "crash-tag": "asan;1;src/shred.c:293",
     "mutate-range": "0~1000;0~1000",
     "timeout": {
-      "local": 300,
-      "global": 300
+      "local": 43200,
+      "global": 43200
     },
     "proof-of-crash": {
       "format": ["int", "int"],
